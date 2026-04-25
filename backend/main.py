@@ -66,18 +66,26 @@ def predict(data: dict):
         temp = max(0, min(temp, 60))
 
         # =========================
-        # 🤖 AI MODEL (SAFE EXECUTION)
+        # 🔄 NORMALIZATION
         # =========================
-        X = np.array([[cycles, voltage, current, temp]])
+        cycles_n = cycles / 2000
+        voltage_n = (voltage - 2.5) / (4.2 - 2.5)
+        current_n = current / 8
+        temp_n = temp / 60
 
+        X = np.array([[cycles_n, voltage_n, current_n, temp_n]])
+
+        # =========================
+        # 🤖 AI MODEL
+        # =========================
         if model is not None:
             try:
                 soh_ai = float(model.predict(X)[0])
             except Exception as e:
                 print("⚠ Model prediction failed:", str(e))
-                soh_ai = 85  # fallback
+                soh_ai = 85
         else:
-            soh_ai = 85  # fallback
+            soh_ai = 85
 
         # =========================
         # 🔥 PHYSICS MODEL
@@ -90,32 +98,36 @@ def predict(data: dict):
         soh_physics = 100 - (cycle_deg + temp_deg + current_deg + voltage_deg)
 
         # =========================
-        # ⚖️ HYBRID MODEL
+        # ⚖️ ADAPTIVE HYBRID MODEL
         # =========================
-        soh = (0.7 * soh_ai) + (0.3 * soh_physics)
+        stress_score = temp_deg + current_deg + voltage_deg
+
+        if stress_score > 25:
+            weight_ai = 0.5
+        else:
+            weight_ai = 0.75
+
+        soh = (weight_ai * soh_ai) + ((1 - weight_ai) * soh_physics)
         soh = max(min(soh, 100), 0)
 
         # =========================
-        # 🔋 RUL (STABLE)
+        # 🔋 SMOOTH RUL MODEL
         # =========================
-        # =========================
-        # 🔋 IMPROVED RUL (DEMO FRIENDLY)
-        # =========================
-        remaining_health = soh - 60
+        remaining_life_ratio = soh / 100
+        rul = int((2000 - cycles) * remaining_life_ratio)
 
-        if remaining_health <= 0:
-         # instead of hard 0 → show minimal life
-           rul = int(max(5, (2000 - cycles) * 0.05))
-        else:
-           rul = int((remaining_health / 40) * (2000 - cycles))
-           rul = max(rul, 5)
+        if rul < 20 and soh > 40:
+            rul = 20
 
         # =========================
         # 📊 CONFIDENCE
         # =========================
-        stress_score = temp_deg + current_deg + voltage_deg
-        confidence = round(85 - (stress_score / 50) * 20, 1)
-        confidence = max(min(confidence, 95), 60)
+        if model is None:
+            confidence = 65
+        else:
+            confidence = 85 - (stress_score * 0.4)
+
+        confidence = max(min(round(confidence, 1), 95), 60)
 
         # =========================
         # 🟢 STATUS LOGIC
@@ -158,7 +170,21 @@ def predict(data: dict):
             alerts.append("Battery failure risk")
 
         # =========================
-        # 📦 RESPONSE
+        # ⚠️ WARNINGS (NEW)
+        # =========================
+        warnings = []
+
+        if voltage < 3.0 or voltage > 4.2:
+            warnings.append("Voltage outside normal operating range")
+
+        if temp > 50:
+            warnings.append("Extreme temperature condition")
+
+        if cycles > 1800:
+            warnings.append("Battery near end-of-life")
+
+        # =========================
+        # 📦 FINAL RESPONSE
         # =========================
         return {
             "soh": round(soh, 2),
@@ -166,7 +192,8 @@ def predict(data: dict):
             "confidence": confidence,
             "status": status,
             "recommendation": recommendation,
-            "alerts": alerts
+            "alerts": alerts,
+            "warnings": warnings
         }
 
     except Exception as e:
