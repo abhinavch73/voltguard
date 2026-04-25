@@ -14,7 +14,7 @@ import { Line } from "react-chartjs-2";
 
 ChartJS.register(LineElement, CategoryScale, LinearScale, PointElement);
 
-const API_URL = "http://127.0.0.1:8000";
+const API_URL = "https://voltguard-q91c.onrender.com";
 
 function App() {
 
