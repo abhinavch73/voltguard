@@ -16,14 +16,25 @@ app.add_middleware(
 )
 
 # =========================
-# 🔹 LOAD MODEL
+# 🔹 LOAD MODEL (SAFE)
 # =========================
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-model = joblib.load(os.path.join(BASE_DIR, "model.pkl"))
+MODEL_PATH = os.path.join(BASE_DIR, "model.pkl")
+
+model = None
+
+try:
+    model = joblib.load(MODEL_PATH)
+    print("✅ Model loaded successfully")
+except Exception as e:
+    print("❌ Model loading failed:", str(e))
+    model = None
+
 
 @app.get("/")
 def home():
     return {"status": "VoltGuard AI System Running"}
+
 
 # =========================
 # 🔥 MAIN PREDICTION API
@@ -41,15 +52,13 @@ def predict(data: dict):
         temp = float(data.get("temp", 30))
 
         # =========================
-        # 🚨 VALIDATION (BEFORE CLAMP)
+        # 🚨 VALIDATION
         # =========================
         if cycles > 2000:
-            return {
-                "error": "Cycle count exceeds realistic battery limits (max 2000)"
-            }
+            return {"error": "Cycle count exceeds realistic limit (max 2000)"}
 
         # =========================
-        # 🔒 CLAMP SAFE RANGES
+        # 🔒 SAFE LIMITS
         # =========================
         cycles = max(0, cycles)
         voltage = max(2.5, min(voltage, 4.2))
@@ -57,10 +66,18 @@ def predict(data: dict):
         temp = max(0, min(temp, 60))
 
         # =========================
-        # 🤖 AI MODEL
+        # 🤖 AI MODEL (SAFE EXECUTION)
         # =========================
         X = np.array([[cycles, voltage, current, temp]])
-        soh_ai = float(model.predict(X)[0])
+
+        if model is not None:
+            try:
+                soh_ai = float(model.predict(X)[0])
+            except Exception as e:
+                print("⚠ Model prediction failed:", str(e))
+                soh_ai = 85  # fallback
+        else:
+            soh_ai = 85  # fallback
 
         # =========================
         # 🔥 PHYSICS MODEL
@@ -79,7 +96,7 @@ def predict(data: dict):
         soh = max(min(soh, 100), 0)
 
         # =========================
-        # 🔋 RUL (FIXED MODEL)
+        # 🔋 RUL (STABLE)
         # =========================
         remaining_health = soh - 60
 
@@ -97,7 +114,7 @@ def predict(data: dict):
         confidence = max(min(confidence, 95), 60)
 
         # =========================
-        # 🟢 STATUS (SMART LOGIC)
+        # 🟢 STATUS LOGIC
         # =========================
         if soh >= 80 and stress_score < 10:
             status = "healthy"
@@ -110,11 +127,11 @@ def predict(data: dict):
         # 💡 RECOMMENDATIONS
         # =========================
         if status == "healthy":
-            recommendation = "Battery is in good condition. Maintain current operating conditions."
+            recommendation = "Battery is in good condition. Maintain conditions."
         elif status == "degrading":
-            recommendation = "Battery is aging. Reduce temperature and current load."
+            recommendation = "Battery is aging. Reduce temperature and load."
         else:
-            recommendation = "Battery health is critical. Immediate inspection or replacement required."
+            recommendation = "Battery is critical. Replacement recommended."
 
         # =========================
         # 🚨 ALERTS
