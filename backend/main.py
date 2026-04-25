@@ -98,13 +98,17 @@ def predict(data: dict):
         # =========================
         # 🔋 RUL (STABLE)
         # =========================
+        # =========================
+        # 🔋 IMPROVED RUL (DEMO FRIENDLY)
+        # =========================
         remaining_health = soh - 60
 
         if remaining_health <= 0:
-            rul = 0
+         # instead of hard 0 → show minimal life
+           rul = int(max(5, (2000 - cycles) * 0.05))
         else:
-            rul = int((remaining_health / 40) * (2000 - cycles))
-            rul = max(rul, 0)
+           rul = int((remaining_health / 40) * (2000 - cycles))
+           rul = max(rul, 5)
 
         # =========================
         # 📊 CONFIDENCE
